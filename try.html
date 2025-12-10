@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Installed Apps</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f4;
+      margin: 20px;
+    }
+    h1 {
+      text-align: center;
+    }
+    .app-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .app-card {
+      background: #fff;
+      padding: 10px;
+      border-radius: 10px;
+      text-align: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .app-card:hover {
+      transform: scale(1.05);
+    }
+    .app-card img {
+      width: 64px;
+      height: 64px;
+      margin-bottom: 10px;
+    }
+    .app-name {
+      font-size: 14px;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <h1>Installed Apps</h1>
+  <div class="app-grid" id="appGrid"></div>
+
+  <script>
+    async function fetchApps() {
+      try {
+        const response = await fetch('http://192.168.0.193:5000/applist');
+        const data = await response.json();
+
+        const appGrid = document.getElementById('appGrid');
+        appGrid.innerHTML = '';
+
+        data.apps.forEach(app => {
+          const card = document.createElement('div');
+          card.className = 'app-card';
+          card.onclick = () => {
+            fetch(`http://192.168.0.193:5000/launch?path=${encodeURIComponent(app.appPath)}`)
+              .then(() => alert(`${app.name} launched!`))
+              .catch(err => alert(`Failed to launch ${app.name}: ${err}`));
+          };
+
+          const img = document.createElement('img');
+          if (app.iconPath) {
+            // Fetch image from server
+            img.src = `http://192.168.0.193:5000/getIcon?name=${encodeURIComponent(app.name)}`;
+          } else {
+            img.src = 'https://via.placeholder.com/64?text=No+Icon';
+          }
+
+          const name = document.createElement('div');
+          name.className = 'app-name';
+          name.textContent = app.name;
+
+          card.appendChild(img);
+          card.appendChild(name);
+          appGrid.appendChild(card);
+        });
+      } catch (err) {
+        console.error('Error fetching apps:', err);
+      }
+    }
+
+    fetchApps();
+  </script>
+</body>
+</html>
