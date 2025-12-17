@@ -9,7 +9,8 @@ const os = require("os");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const HOST = '192.168.1.69';
+//const HOST = '192.168.1.69';
+const HOST = '192.168.0.246';
 
 // creating a temp directory for storing converted icons
 const iconcacheDir = path.join(__dirname, "app_icons");
@@ -69,7 +70,7 @@ app.get("/applist", (req, res) => {
     ];
 
     const wantedApps = [
-        "Safari", "Brave", "Chess", "Blender","GitHub Desktop", "Xcode", "Notes", "Mail", "Messages"
+        "Safari", "Brave", "Chess", "Blender","GitHub Desktop", "Xcode", "Notes", "Mail", "Messages","Calculator"
     ];
 
     let results = [];
@@ -90,6 +91,8 @@ app.get("/applist", (req, res) => {
 
             const appName = info.CFBundleName || appFolderName.replace(".app", "");
             if (!wantedApps.includes(appName)) return;
+
+            const bundleID = info.CFBundleIdentifier;
 
             // Try to find icon
             let iconPath = null;
@@ -114,7 +117,8 @@ app.get("/applist", (req, res) => {
             results.push({
                 name: appName,
                 appPath: fullAppPath,
-                iconPath: iconPath
+                iconPath: iconPath,
+                bundleId: bundleID
             });
         });
     });
@@ -156,16 +160,8 @@ app.get("/launch", (req, res) => {
             console.error("Error launching app:", error);
             return res.status(500).json({ error: "Failed to launch app" });
         }
-        res.json({ status: "App launched successfully" });
+        res.json({ success: true, message: "App launched successfully" });
     });
-});
-
-//------------------------------
-//Streaming
-//------------------------------
-app.get("/stream", (req, res) => {
-    console.log("Streaming requested");
-    //call helperscript to start streaming with appname
 });
 
 //------------------------------
@@ -194,21 +190,49 @@ let helper = null;
 
 wss.on('connection', (ws) => {
     ws.on('message', (message) => {
-        const data = JSON.parse(message);
+        try {
+            // Handle both string and Buffer messages
+            const msgString = message.toString();
+            const data = JSON.parse(msgString);
 
-        if (data.role === 'unity') {
-            unity = ws;
-            console.log('✅ Unity connected');
+            // Register connections
+            if (data.role === 'unity') {
+                unity = ws;
+                console.log('✅ Unity connected');
+            }
+            if (data.role === 'helper') {
+                helper = ws;
+                console.log('✅ helper connected');
+            }
+
+            // Forward messages
+            if (data.to === 'unity' && unity && unity.readyState === WebSocket.OPEN) {
+                // If it's a binary message (like NAL units), it might not parse as JSON above, 
+                // but your Helper sends Metadata as JSON first, then Binary.
+                // This block handles JSON signaling.
+                unity.send(msgString);
+            }
+
+            if (data.to === 'helper' && helper && helper.readyState === WebSocket.OPEN) {
+                helper.send(msgString);
+            }
+        } catch (e) {
+            // If JSON.parse fails, it might be raw binary data (video stream)
+            // We assume binary data is meant for Unity (from Helper)
+            if (unity && unity.readyState === WebSocket.OPEN) {
+                unity.send(message); // Forward raw binary
+            }
         }
-        if (data.role === 'helper') {
-            helper = ws;
-            console.log('✅ helper connected');
+    });
+    
+    ws.on('close', () => {
+        if (ws === unity) {
+            console.log('❌ Unity disconnected');
+            unity = null;
         }
-
-        if (data.to === 'unity' && unity)
-            unity.send(message);
-
-        if (data.to === 'helper' && helper)
-            helper.send(message);
-    });   
+        if (ws === helper) {
+            console.log('❌ Helper disconnected');
+            helper = null;
+        }
+    });
 });
